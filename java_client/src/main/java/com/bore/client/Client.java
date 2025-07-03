@@ -33,11 +33,11 @@ public class Client implements Closeable {
     /**
      * 创建一个新的客户端
      */
-    public static Client create(String localHost, int localPort, String to, int port, String secret) 
+    public static Client create(String localHost, int localPort, String to, int port, String secret)
             throws IOException, TimeoutException {
         Socket socket = StreamUtils.connectWithTimeout(to, Constants.CONTROL_PORT, Constants.NETWORK_TIMEOUT_MS);
         Delimited stream = new Delimited(socket);
-        
+
         Authenticator auth = null;
         if (secret != null && !secret.isEmpty()) {
             auth = new Authenticator(secret);
@@ -46,24 +46,24 @@ public class Client implements Closeable {
 
         stream.send(ClientMessage.hello(port));
         ServerMessage response = stream.recvTimeout(ServerMessage.class);
-        
+
         if (response == null) {
             throw new IOException("Unexpected EOF");
         }
-        
+
         switch (response.getType()) {
             case HELLO:
                 int remotePort = response.getHelloPort();
                 logger.info("Connected to server, remote port: {}", remotePort);
                 logger.info("Listening at {}:{}", to, remotePort);
                 return new Client(stream, to, localHost, localPort, remotePort, auth);
-                
+
             case ERROR:
                 throw new IOException("Server error: " + response.getErrorMessage());
-                
+
             case CHALLENGE:
                 throw new IOException("Server requires authentication, but no client secret was provided");
-                
+
             default:
                 throw new IOException("Unexpected initial non-hello message");
         }
@@ -91,30 +91,42 @@ public class Client implements Closeable {
      */
     public void listen() throws IOException {
         try {
+            logger.debug("Starting to listen for messages from server");
             while (running) {
                 ServerMessage message = conn.recv(ServerMessage.class);
-                if (message == null) {
-                    break; // EOF
+                if (message.getType() == null) {
+                    // Instead of breaking immediately, let's try to reconnect or wait
+                    // This could be a temporary network issue
+                    try {
+                        Thread.sleep(500); // Wait a bit before retrying
+                        continue;
+                    } catch (InterruptedException ie) {
+                        if (!running) break;
+                    }
                 }
-                
+
+                logger.debug("Received message of type: {}", message.getType());
+
                 switch (message.getType()) {
                     case HELLO:
                         logger.warn("Unexpected hello");
                         break;
-                        
+
                     case CHALLENGE:
                         logger.warn("Unexpected challenge");
                         break;
-                        
+
                     case HEARTBEAT:
-                        // 心跳包，不需要处理
+                        // 心跳包，记录日志但不需要特殊处理
+                        logger.debug("Received heartbeat from server");
                         break;
-                        
+
                     case CONNECTION:
                         UUID id = message.getConnectionId();
+                        logger.info("Received connection request with ID: {}", id);
                         executor.submit(() -> handleConnection(id));
                         break;
-                        
+
                     case ERROR:
                         logger.error("Server error: {}", message.getErrorMessage());
                         break;
@@ -127,33 +139,33 @@ public class Client implements Closeable {
 
     private void handleConnection(UUID id) {
         logger.info("New connection: {}", id);
-        
+
         try {
             // 连接到服务器的控制端口
             Socket remoteConn = StreamUtils.connectWithTimeout(to, Constants.CONTROL_PORT, Constants.NETWORK_TIMEOUT_MS);
             Delimited remoteStream = new Delimited(remoteConn);
-            
+
             // 如果需要，进行认证
             if (auth != null) {
                 auth.clientHandshake(remoteStream);
             }
-            
+
             // 发送接受连接的消息
             remoteStream.send(ClientMessage.accept(id));
-            
+
             // 连接到本地服务
             Socket localConn = StreamUtils.connectWithTimeout(localHost, localPort, Constants.NETWORK_TIMEOUT_MS);
-            
+
             // 将任何缓冲数据写入本地连接
             byte[] bufferedData = remoteStream.getAvailableData();
             if (bufferedData.length > 0) {
                 localConn.getOutputStream().write(bufferedData);
                 localConn.getOutputStream().flush();
             }
-            
+
             // 在两个连接之间双向复制数据
             StreamUtils.copyBidirectional(localConn, remoteConn);
-            
+
             logger.info("Connection exited: {}", id);
         } catch (Exception e) {
             logger.warn("Connection exited with error: {}", e.getMessage());
@@ -171,7 +183,7 @@ public class Client implements Closeable {
             }
             conn = null;
         }
-        
+
         executor.shutdownNow();
     }
 }

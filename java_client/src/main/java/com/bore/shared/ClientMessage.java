@@ -1,10 +1,21 @@
 package com.bore.shared;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.core.JsonGenerator;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.SerializerProvider;
+import com.fasterxml.jackson.databind.annotation.JsonSerialize;
+import com.fasterxml.jackson.databind.ser.std.StdSerializer;
+
+import java.io.IOException;
 import java.util.UUID;
 
 /**
  * 客户端发送到服务器的消息
  */
+@JsonIgnoreProperties(ignoreUnknown = true)
+@JsonSerialize(using = ClientMessage.ClientMessageSerializer.class)
 public class ClientMessage {
     private MessageType type;
     private String authenticateTag;
@@ -59,5 +70,39 @@ public class ClientMessage {
 
     public UUID getAcceptId() {
         return acceptId;
+    }
+    
+    /**
+     * 自定义序列化器，用于生成 Rust 格式的消息
+     */
+    public static class ClientMessageSerializer extends StdSerializer<ClientMessage> {
+        
+        public ClientMessageSerializer() {
+            this(null);
+        }
+        
+        public ClientMessageSerializer(Class<ClientMessage> t) {
+            super(t);
+        }
+        
+        @Override
+        public void serialize(ClientMessage value, JsonGenerator gen, SerializerProvider provider) 
+                throws IOException, JsonProcessingException {
+            gen.writeStartObject();
+            
+            switch (value.type) {
+                case AUTHENTICATE:
+                    gen.writeStringField("Authenticate", value.authenticateTag);
+                    break;
+                case HELLO:
+                    gen.writeNumberField("Hello", value.helloPort);
+                    break;
+                case ACCEPT:
+                    gen.writeStringField("Accept", value.acceptId.toString());
+                    break;
+            }
+            
+            gen.writeEndObject();
+        }
     }
 }

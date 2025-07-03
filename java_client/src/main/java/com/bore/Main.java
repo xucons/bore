@@ -3,14 +3,16 @@ package com.bore;
 import com.bore.client.Client;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import picocli.CommandLine;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
 import picocli.CommandLine.Parameters;
 
 import java.util.concurrent.Callable;
+import java.util.concurrent.CountDownLatch;
 
-@Command(name = "bore-client", mixinStandardHelpOptions = true, 
-         description = "Java client for bore tunnel service")
+@Command(name = "bore-client", mixinStandardHelpOptions = true,
+        description = "Java client for bore tunnel service")
 public class Main implements Callable<Integer> {
     private static final Logger log = LoggerFactory.getLogger(Main.class);
 
@@ -28,6 +30,7 @@ public class Main implements Callable<Integer> {
 
     @Option(names = {"-s", "--secret"}, description = "Optional secret for authentication")
     private String secret;
+
 
     public static void main(String[] args) {
 //        int exitCode = new CommandLine(new Main()).execute(args);
@@ -52,14 +55,15 @@ public class Main implements Callable<Integer> {
     @Override
     public Integer call() {
         try {
+
             Client client = Client.create(localHost, localPort, to, port, secret);
-            
+
             // 添加关闭钩子
             Runtime.getRuntime().addShutdownHook(new Thread(() -> {
                 log.info("Shutting down client...");
                 client.close();
             }));
-            
+
             client.listen();
             return 0;
         } catch (Exception e) {

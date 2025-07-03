@@ -3,8 +3,7 @@ package com.bore.shared;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.io.*;
- import java.net.Socket;
-import java.nio.charset.StandardCharsets;
+import java.net.Socket;
 import java.util.concurrent.*;
 
 /**
@@ -42,12 +41,12 @@ public class Delimited implements Closeable {
                 throw new IOException("Frame too large");
             }
         }
-        
+
         byte[] data = readBuffer.toByteArray();
         if (data.length == 0) {
             return null;
         }
-        
+
         return objectMapper.readValue(data, type);
     }
 
@@ -106,7 +105,7 @@ public class Delimited implements Closeable {
         if (available <= 0) {
             return new byte[0];
         }
-        
+
         byte[] data = new byte[available];
         input.readFully(data);
         return data;
